@@ -2,7 +2,7 @@ from flask import Flask
 
 app = Flask(__name__)
 
-TAG = "ec2-v1.0.0"
+TAG = "fargate"
 
 @app.route("/")
 def home():
