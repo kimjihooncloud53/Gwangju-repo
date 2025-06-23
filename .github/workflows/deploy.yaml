@@ -104,7 +104,6 @@ jobs:
         run: |
           jq '{ awsvpcConfiguration: .services[0].networkConfiguration.awsvpcConfiguration }' \
             service-def.json > netconfig.json
-                ' service-def.json > updated-service-def.json
 
       - name: Update ECS service with awsvpcConfiguration
         run: |
