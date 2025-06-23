@@ -95,7 +95,6 @@ jobs:
               --cluster ${{ env.ECS_CLUSTER }} \
               --service ${{ env.ECS_SERVICE }} \
               --task-definition ${{ steps.register-task.outputs.TASK_DEFINITION_ARN }} \
-              --network-configuration "awsvpcConfiguration={subnets=[\"${{ env.ECS_SUBNETS//,/\",\" }}\"],securityGroups=[\"${{ env.ECS_SGS//,/\",\" }}\"],assignPublicIp=\"ENABLED\"}" \
               --force-new-deployment
           else
             aws ecs update-service \
