@@ -49,11 +49,13 @@ jobs:
       - name: Prepare new task definition JSON
         run: |
           IMAGE_URI="${{ secrets.ECR_REGISTRY }}/${{ secrets.ECR_REPOSITORY }}:latest"
-          
-          # 기존 태스크 정의 조회
-          aws ecs describe-task-definition --task-definition ${{ env.ECS_TASK_DEF_NAME }} > full-task-def.json
 
-          # 기본 필드만 뽑기
+          # 기존 태스크 정의 조회
+          aws ecs describe-task-definition \
+            --task-definition ${{ env.ECS_TASK_DEF_NAME }} \
+            --output json > full-task-def.json
+
+          # 베이스 정의 생성
           jq '{
             family: .taskDefinition.family,
             taskRoleArn: .taskDefinition.taskRoleArn,
@@ -64,14 +66,13 @@ jobs:
             volumes: .taskDefinition.volumes
           }' full-task-def.json > base-task-def.json
 
-          # 태그에 따라 requiresCompatibilities, networkMode 설정
+          # Fargate vs EC2 분기
           if [ "${{ steps.check_tag.outputs.is_fargate }}" = "true" ]; then
             jq --arg IMAGE "$IMAGE_URI" '
               .containerDefinitions[0].image = $IMAGE
               | . + { requiresCompatibilities: ["FARGATE"], networkMode: "awsvpc" }
             ' base-task-def.json > new-task-def.json
           else
-            # EC2용 requiresCompatibilities는 ["EC2"], networkMode는 기존값 또는 bridge로 지정
             NETWORK_MODE=$(jq -r '.taskDefinition.networkMode // "bridge"' full-task-def.json)
             jq --arg IMAGE "$IMAGE_URI" --arg netmode "$NETWORK_MODE" '
               .containerDefinitions[0].image = $IMAGE
@@ -86,26 +87,35 @@ jobs:
             --cli-input-json file://new-task-def.json \
             --query 'taskDefinition.taskDefinitionArn' \
             --output text)
-          echo "TASK_DEFINITION_ARN=$TASK_DEF_ARN"
           echo "TASK_DEFINITION_ARN=$TASK_DEF_ARN" >> $GITHUB_OUTPUT
 
-      - name: Update ECS service to use new task definition
+      # ────────────────────────────────────────────────────────────────────────── #
+      # 여기서부터 서비스 네트워크 설정(JSON 방식) 적용
+      # ────────────────────────────────────────────────────────────────────────── #
+
+      - name: Describe existing service definition
         run: |
-          if [ "${{ steps.check_tag.outputs.is_fargate }}" = "true" ]; then
-            aws ecs update-service \
-              --cluster ${{ env.ECS_CLUSTER }} \
-              --service ${{ env.ECS_SERVICE }} \
-              --task-definition ${{ steps.register-task.outputs.TASK_DEFINITION_ARN }} \
-              --assignPublicIp ENABLED \
-              --force-new-deployment
-          else
-            aws ecs update-service \
-              --cluster ${{ env.ECS_CLUSTER }} \
-              --service ${{ env.ECS_SERVICE }} \
-              --task-definition ${{ steps.register-task.outputs.TASK_DEFINITION_ARN }} \
-              --capacity-provider-strategy capacityProvider=EC2,weight=1 \
-              --force-new-deployment
-          fi
+          aws ecs describe-services \
+            --cluster ${{ env.ECS_CLUSTER }} \
+            --services ${{ env.ECS_SERVICE }} \
+            --output json > service-def.json
+
+      - name: Enable public IP in networkConfiguration
+        run: |
+          # jq로 networkConfiguration.awsvpcConfiguration.assignPublicIp 설정
+          jq '
+            .services[0].networkConfiguration.awsvpcConfiguration.assignPublicIp = "ENABLED"
+          ' service-def.json > updated-service-def.json
+
+      - name: Update ECS service with new network config & task
+        run: |
+          aws ecs update-service \
+            --cluster ${{ env.ECS_CLUSTER }} \
+            --service ${{ env.ECS_SERVICE }} \
+            --task-definition ${{ steps.register-task.outputs.TASK_DEFINITION_ARN }} \
+            --network-configuration file://updated-service-def.json \
+            --force-new-deployment
+
       - name: Wait for ECS service to stabilize
         run: |
           aws ecs wait services-stable \
