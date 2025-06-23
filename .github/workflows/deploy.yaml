@@ -89,14 +89,15 @@ jobs:
           echo "TASK_DEFINITION_ARN=$TASK_DEF_ARN"
           echo "TASK_DEFINITION_ARN=$TASK_DEF_ARN" >> $GITHUB_OUTPUT
 
-      - name: Update ECS service to use new task definition
+      - name: Update ECS service to use new task definition and capacity provider
         run: |
           if [ "${{ steps.check_tag.outputs.is_fargate }}" = "true" ]; then
             aws ecs update-service \
               --cluster ${{ env.ECS_CLUSTER }} \
               --service ${{ env.ECS_SERVICE }} \
               --task-definition ${{ steps.register-task.outputs.TASK_DEFINITION_ARN }} \
-              --capacity-provider-strategy capacityProvider=FARGATE \
+              --capacity-provider-strategy capacityProvider=FARGATE,weight=1 \
+              --platform-version LATEST \
               --force-new-deployment
           else
             aws ecs update-service \
@@ -106,7 +107,6 @@ jobs:
               --capacity-provider-strategy capacityProvider=EC2,weight=1 \
               --force-new-deployment
           fi
-
       - name: Wait for ECS service to stabilize
         run: |
           aws ecs wait services-stable \
