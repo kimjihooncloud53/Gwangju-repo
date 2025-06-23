@@ -69,7 +69,7 @@ jobs:
             jq --arg IMAGE "$IMAGE_URI" '
               .containerDefinitions[0].image = $IMAGE
               | . + { requiresCompatibilities: ["FARGATE"], networkMode: "awsvpc" }
-            ' base-task-def.json > new-task-def.json
+            ' full-task-def.json > new-task-def.json
           else
             # EC2용 requiresCompatibilities는 ["EC2"], networkMode는 기존값 또는 bridge로 지정
             # 기존 networkMode가 있는지 확인 후 없으면 bridge로 지정
