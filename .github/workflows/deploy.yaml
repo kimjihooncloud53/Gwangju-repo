@@ -96,7 +96,7 @@ jobs:
               --cluster ${{ env.ECS_CLUSTER }} \
               --service ${{ env.ECS_SERVICE }} \
               --task-definition ${{ steps.register-task.outputs.TASK_DEFINITION_ARN }} \
-              --capacity-provider-strategy capacityProvider=FARGATE,weight=1 \
+              --capacity-provider-strategy capacityProvider=FARGATE \
               --force-new-deployment
           else
             aws ecs update-service \
