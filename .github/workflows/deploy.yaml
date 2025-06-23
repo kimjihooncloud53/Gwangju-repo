@@ -96,7 +96,7 @@ jobs:
               --cluster ${{ env.ECS_CLUSTER }} \
               --service ${{ env.ECS_SERVICE }} \
               --task-definition ${{ steps.register-task.outputs.TASK_DEFINITION_ARN }} \
-              --capacity-provider-strategy capacityProvider=FARGATE,weight=1 \
+              --launch-type FARGATE \
               --platform-version LATEST \
               --force-new-deployment
           else
@@ -107,6 +107,7 @@ jobs:
               --capacity-provider-strategy capacityProvider=EC2,weight=1 \
               --force-new-deployment
           fi
+
       - name: Wait for ECS service to stabilize
         run: |
           aws ecs wait services-stable \
