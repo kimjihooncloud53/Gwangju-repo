@@ -1,5 +1,5 @@
 {
-    "taskDefinitionArn": "arn:aws:ecs:ap-northeast-2:323974325951:task-definition/Gwangju-cicd-task:2",
+    "taskDefinitionArn": "arn:aws:ecs:ap-northeast-2:323974325951:task-definition/Gwangju-cicd-task:3",
     "containerDefinitions": [
         {
             "name": "Gwangju-container",
@@ -39,7 +39,7 @@
     "taskRoleArn": "arn:aws:iam::323974325951:role/ecsTaskExecutionRole",
     "executionRoleArn": "arn:aws:iam::323974325951:role/ecsTaskExecutionRole",
     "networkMode": "awsvpc",
-    "revision": 2,
+    "revision": 3,
     "volumes": [],
     "status": "ACTIVE",
     "requiresAttributes": [
@@ -80,7 +80,8 @@
         "FARGATE"
     ],
     "requiresCompatibilities": [
-        "EC2"
+        "EC2",
+        "FARGATE"
     ],
     "cpu": "512",
     "memory": "1024",
@@ -88,7 +89,7 @@
         "cpuArchitecture": "X86_64",
         "operatingSystemFamily": "LINUX"
     },
-    "registeredAt": "2025-06-23T02:57:58.575Z",
+    "registeredAt": "2025-06-23T03:00:24.254Z",
     "registeredBy": "arn:aws:iam::323974325951:user/root",
     "enableFaultInjection": false,
     "tags": []
