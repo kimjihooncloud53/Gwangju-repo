@@ -91,10 +91,19 @@ jobs:
 
       - name: Update ECS service to use new task definition
         run: |
-          aws ecs update-service \
-            --cluster ${{ env.ECS_CLUSTER }} \
-            --service ${{ env.ECS_SERVICE }} \
-            --task-definition ${{ steps.register-task.outputs.TASK_DEFINITION_ARN }}
+          if [ "${{ steps.check_tag.outputs.is_fargate }}" = "true" ]; then
+            aws ecs update-service \
+              --cluster ${{ env.ECS_CLUSTER }} \
+              --service ${{ env.ECS_SERVICE }} \
+              --task-definition ${{ steps.register-task.outputs.TASK_DEFINITION_ARN }} \
+              --capacity-provider-strategy capacityProvider=FARGATE,weight=1
+          else
+            aws ecs update-service \
+              --cluster ${{ env.ECS_CLUSTER }} \
+              --service ${{ env.ECS_SERVICE }} \
+              --task-definition ${{ steps.register-task.outputs.TASK_DEFINITION_ARN }} \
+              --capacity-provider-strategy capacityProvider=EC2,weight=1
+          fi
 
       - name: Wait for ECS service to stabilize
         run: |
