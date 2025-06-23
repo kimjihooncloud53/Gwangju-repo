@@ -1,0 +1,104 @@
+name: Gwangju-cicd-action
+on:
+  push:
+    branches:
+      - Gwangju-app
+
+env:
+  AWS_REGION: ap-northeast-2
+  ECS_CLUSTER: Gwangju-cicd-cluster
+  ECS_SERVICE: Gwangju-cicd-service
+  ECS_TASK_DEF_NAME: Gwangju-cicd-task
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v1
+
+      - name: Build Docker image
+        run: |
+          docker build -t ${{ secrets.ECR_REPOSITORY }}:latest .
+          docker tag ${{ secrets.ECR_REPOSITORY }}:latest ${{ secrets.ECR_REGISTRY }}/${{ secrets.ECR_REPOSITORY }}:latest
+
+      - name: Push Docker image to ECR
+        run: |
+          docker push ${{ secrets.ECR_REGISTRY }}/${{ secrets.ECR_REPOSITORY }}:latest
+
+      - name: Check TAG in cicd-app.py
+        id: check_tag
+        run: |
+          if grep -q 'TAG *= *"fargate"' cicd-app.py; then
+            echo "is_fargate=true" >> $GITHUB_OUTPUT
+          else
+            echo "is_fargate=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Prepare new task definition JSON
+        run: |
+          IMAGE_URI="${{ secrets.ECR_REGISTRY }}/${{ secrets.ECR_REPOSITORY }}:latest"
+          
+          # 기존 태스크 정의 조회
+          aws ecs describe-task-definition --task-definition ${{ env.ECS_TASK_DEF_NAME }} > full-task-def.json
+
+          # 기본 필드만 뽑기
+          jq '{
+            family: .taskDefinition.family,
+            taskRoleArn: .taskDefinition.taskRoleArn,
+            executionRoleArn: .taskDefinition.executionRoleArn,
+            containerDefinitions: .taskDefinition.containerDefinitions,
+            cpu: .taskDefinition.cpu,
+            memory: .taskDefinition.memory,
+            volumes: .taskDefinition.volumes
+          }' full-task-def.json > base-task-def.json
+
+          # 태그에 따라 requiresCompatibilities, networkMode 설정
+          if [ "${{ steps.check_tag.outputs.is_fargate }}" = "true" ]; then
+            jq --arg IMAGE "$IMAGE_URI" '
+              .containerDefinitions[0].image = $IMAGE
+              | . + { requiresCompatibilities: ["FARGATE"], networkMode: "awsvpc" }
+            ' base-task-def.json > new-task-def.json
+          else
+            # EC2용 requiresCompatibilities는 ["EC2"], networkMode는 기존값 또는 bridge로 지정
+            # 기존 networkMode가 있는지 확인 후 없으면 bridge로 지정
+            NETWORK_MODE=$(jq -r '.taskDefinition.networkMode // "bridge"' full-task-def.json)
+            jq --arg IMAGE "$IMAGE_URI" --arg netmode "$NETWORK_MODE" '
+              .containerDefinitions[0].image = $IMAGE
+              | . + { requiresCompatibilities: ["EC2"], networkMode: $netmode }
+            ' base-task-def.json > new-task-def.json
+          fi
+
+      - name: Register new task definition
+        id: register-task
+        run: |
+          TASK_DEF_ARN=$(aws ecs register-task-definition \
+            --cli-input-json file://new-task-def.json \
+            --query 'taskDefinition.taskDefinitionArn' \
+            --output text)
+          echo "TASK_DEFINITION_ARN=$TASK_DEF_ARN"
+          echo "TASK_DEFINITION_ARN=$TASK_DEF_ARN" >> $GITHUB_OUTPUT
+
+      - name: Update ECS service to use new task definition
+        run: |
+          aws ecs update-service \
+            --cluster ${{ env.ECS_CLUSTER }} \
+            --service ${{ env.ECS_SERVICE }} \
+            --task-definition ${{ steps.register-task.outputs.TASK_DEFINITION_ARN }}
+
+      - name: Wait for ECS service to stabilize
+        run: |
+          aws ecs wait services-stable \
+            --cluster ${{ env.ECS_CLUSTER }} \
+            --services ${{ env.ECS_SERVICE }}
