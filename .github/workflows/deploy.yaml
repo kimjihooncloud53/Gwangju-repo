@@ -93,27 +93,26 @@ jobs:
       # 여기서부터 서비스 네트워크 설정(JSON 방식) 적용
       # ────────────────────────────────────────────────────────────────────────── #
 
-      - name: Describe existing service definition
+      - name: Describe existing service
         run: |
           aws ecs describe-services \
             --cluster ${{ env.ECS_CLUSTER }} \
             --services ${{ env.ECS_SERVICE }} \
             --output json > service-def.json
 
-      - name: Enable public IP in networkConfiguration
+      - name: Extract awsvpcConfiguration only
         run: |
-          # jq로 networkConfiguration.awsvpcConfiguration.assignPublicIp 설정
-          jq '
-            .services[0].networkConfiguration.awsvpcConfiguration.assignPublicIp = "ENABLED"
-          ' service-def.json > updated-service-def.json
+          jq '{ awsvpcConfiguration: .services[0].networkConfiguration.awsvpcConfiguration }' \
+            service-def.json > netconfig.json
+                ' service-def.json > updated-service-def.json
 
-      - name: Update ECS service with new network config & task
+      - name: Update ECS service with awsvpcConfiguration
         run: |
           aws ecs update-service \
             --cluster ${{ env.ECS_CLUSTER }} \
             --service ${{ env.ECS_SERVICE }} \
             --task-definition ${{ steps.register-task.outputs.TASK_DEFINITION_ARN }} \
-            --network-configuration file://updated-service-def.json \
+            --network-configuration file://netconfig.json \
             --force-new-deployment
 
       - name: Wait for ECS service to stabilize
